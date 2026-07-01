@@ -59,15 +59,20 @@ class PCMStreamSink(discord.sinks.Sink):
 
     def __init__(self) -> None:
         super().__init__()
+        self._count = 0
 
     def is_opus(self) -> bool:
         return False
 
     def write(self, data, user) -> None:
         pcm = getattr(data, "pcm", None)
-        if pcm:
+        if pcm and len(pcm) > 0:
+            self._count += 1
+            if self._count == 1:
+                print(f"[Sink] Got first PCM frame: {len(pcm)} bytes from {user}")
             result = voice_listener.feed_pcm(pcm)
             if result:
+                print(f"[Sink] Transcription: {result}")
                 bot.loop.create_task(_handle_transcription(result))
 
 
