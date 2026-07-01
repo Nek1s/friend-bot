@@ -18,6 +18,7 @@ class VoiceListener:
         self._speech_streak = 0
         self._silence_limit = int(SILENCE_THRESHOLD * 50)
         self._energy_threshold = 800
+        self._max_frames = 400  # 8 sec — force flush
         self._debug_count = 0
 
     def load_whisper(self) -> None:
@@ -56,6 +57,10 @@ class VoiceListener:
                 if self._silence_frames >= self._silence_limit:
                     print("[VAD] Silence threshold reached, transcribing...")
                     return self._transcribe()
+
+        if len(self._buffer) >= self._max_frames:
+            print(f"[VAD] Max buffer ({self._max_frames} frames) reached, force-flushing...")
+            return self._transcribe()
 
         return None
 
