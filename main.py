@@ -48,8 +48,13 @@ async def _handle_transcription(text: str) -> None:
 
 
 class PCMStreamSink(discord.sinks.Sink):
+    encoding: str = "pcm"
+
     def __init__(self) -> None:
         super().__init__()
+
+    def is_opus(self) -> bool:
+        return False
 
     def write(self, data, user) -> None:
         pcm = getattr(data, "pcm", None)
@@ -100,6 +105,28 @@ async def listen(ctx: discord.ApplicationContext) -> None:
     voice.start_listening(PCMStreamSink())
     voice_listener.on_transcription = _handle_transcription
     await ctx.respond("Слушаю голосовой канал... Говори!")
+
+
+@bot.slash_command(
+    name="talk",
+    description="Подключиться и начать голосовой диалог (одна команда)",
+)
+async def talk(ctx: discord.ApplicationContext) -> None:
+    if not ctx.author.voice:
+        await ctx.respond("Ты не в голосовом канале!", ephemeral=True)
+        return
+
+    await ctx.defer()
+
+    channel = ctx.author.voice.channel
+    voice = await channel.connect()
+
+    voice.start_listening(PCMStreamSink())
+    voice_listener.on_transcription = _handle_transcription
+
+    await ctx.respond(
+        f"Подключился к `{channel.name}` и слушаю. Говори!"
+    )
 
 
 @bot.slash_command(name="stoplisten", description="Перестать слушать канал")
