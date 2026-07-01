@@ -15,8 +15,9 @@ class VoiceListener:
 
         self._buffer: list[bytes] = []
         self._silence_frames = 0
+        self._speech_streak = 0
         self._silence_limit = int(SILENCE_THRESHOLD * 50)
-        self._energy_threshold = 300
+        self._energy_threshold = 800
         self._debug_count = 0
 
     def load_whisper(self) -> None:
@@ -39,18 +40,22 @@ class VoiceListener:
             sp = "SPEECH" if is_speech else "silence"
             print(
                 f"[VAD] frame={self._debug_count} energy={energy:.0f} "
-                f"buf={buf} state={sp} pending={len(self._buffer)}"
+                f"buf={buf} state={sp} silence={self._silence_frames} streak={self._speech_streak}"
             )
 
         if is_speech:
+            self._speech_streak += 1
+            if self._speech_streak >= 3:
+                self._silence_frames = 0
             self._buffer.append(pcm)
-            self._silence_frames = 0
-        elif self._buffer:
-            self._buffer.append(pcm)
-            self._silence_frames += 1
-            if self._silence_frames >= self._silence_limit:
-                print(f"[VAD] Silence threshold reached, transcribing...")
-                return self._transcribe()
+        else:
+            self._speech_streak = 0
+            if self._buffer:
+                self._buffer.append(pcm)
+                self._silence_frames += 1
+                if self._silence_frames >= self._silence_limit:
+                    print("[VAD] Silence threshold reached, transcribing...")
+                    return self._transcribe()
 
         return None
 
