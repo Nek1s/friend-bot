@@ -70,6 +70,7 @@ async def join(ctx: discord.ApplicationContext) -> None:
         await ctx.respond("Ты не в голосовом канале!", ephemeral=True)
         return
 
+    await ctx.defer()
     channel = ctx.author.voice.channel
     await channel.connect()
     await ctx.respond(f"Подключился к `{channel.name}`")
