@@ -18,7 +18,11 @@ class FriendBot(discord.Bot):
 
     async def on_ready(self) -> None:
         print(f"Bot logged in as {self.user} (ID: {self.user.id})")
-        await self.sync_commands()
+        print(f"Guilds: {[g.name for g in self.guilds]}")
+        await self.sync_commands(force=True)
+        for guild in self.guilds:
+            await self.sync_commands(guild_ids=[guild.id])
+            print(f"Synced commands to guild: {guild.name}")
         print("Commands synced")
         tts.load()
         voice_listener.load_whisper()
@@ -51,6 +55,7 @@ async def _handle_transcription(text: str) -> None:
 
 class PCMStreamSink(discord.sinks.Sink):
     encoding: str = "pcm"
+    __sink_listeners__: list = []
 
     def __init__(self) -> None:
         super().__init__()
