@@ -68,16 +68,39 @@ class PCMStreamSink(discord.sinks.Sink):
     def is_opus(self) -> bool:
         return False
 
+    async def _async_transcribe_and_handle() -> None:
+    """Run blocking transcription in executor, then LLM -> TTS -> play."""
+    loop = asyncio.get_event_loop()
+    text = await loop.run_in_executor(None, voice_listener.transcribe_blocking)
+    if not text:
+        return
+    print(f"[Sink] Transcription: {text}")
+    await _handle_transcription(text)
+
+
+class PCMStreamSink(discord.sinks.Sink):
+    encoding: str = "pcm"
+    __sink_listeners__: list = []
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._count = 0
+
+    def is_opus(self) -> bool:
+        return False
+
     def write(self, data, user) -> None:
         pcm = getattr(data, "pcm", None)
         if pcm and len(pcm) > 0:
             self._count += 1
             if self._count == 1:
                 print(f"[Sink] Got first PCM frame: {len(pcm)} bytes from {user}")
-            result = voice_listener.feed_pcm(pcm)
-            if result:
-                print(f"[Sink] Transcription: {result}")
-                bot.loop.create_task(_handle_transcription(result))
+            if voice_listener.is_busy():
+                return
+            ready = voice_listener.feed_pcm(pcm)
+            if ready:
+                print(f"[Sink] Triggering async transcription...")
+                bot.loop.create_task(_async_transcribe_and_handle())
 
 
 @bot.slash_command(name="ping", description="Проверка работоспособности")
