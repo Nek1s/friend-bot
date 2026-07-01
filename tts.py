@@ -4,6 +4,18 @@ from concurrent.futures import ThreadPoolExecutor
 import torch
 from config import OUTPUT_DIR, TTS_MODEL_NAME, VOICE_SAMPLES_DIR
 
+# PyTorch 2.6+ default: weights_only=True — TTS needs False
+torch.serialization.add_safe_globals([])
+_original_load = torch.load
+
+
+def _load(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _original_load(*args, **kwargs)
+
+
+torch.load = _load
+
 _pool = ThreadPoolExecutor(max_workers=1)
 
 
@@ -18,7 +30,8 @@ class TTSManager:
         print("TTSManager: загружаю XTTSv2 (первый запуск — ~3 ГБ весов)...")
         from TTS.api import TTS
 
-        self.model = TTS(model_name=TTS_MODEL_NAME, progress_bar=False, gpu=True)
+        self.model = TTS(model_name=TTS_MODEL_NAME, progress_bar=False)
+        self.model.to("cuda")
         self._loaded = True
         print("TTSManager: XTTSv2 модель загружена")
 
