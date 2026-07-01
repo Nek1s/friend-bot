@@ -75,10 +75,12 @@ class VoiceListener:
         mono = self._stereo_to_mono(raw)
         wav = self._to_wav(mono)
 
+        print(f"[STT] Transcribing {len(wav)} bytes ({len(raw)} raw PCM)...")
         segments, _ = self.whisper.transcribe(
             wav, language=self.language, beam_size=5, vad_filter=True
         )
         text = " ".join(s.text for s in segments).strip()
+        print(f"[STT] Result: '{text}'")
         return text or None
 
     @staticmethod
@@ -99,6 +101,6 @@ class VoiceListener:
         with wave.open(buf, "w") as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
-            wf.setframerate(24000)
+            wf.setframerate(48000)
             wf.writeframes(mono_pcm)
         return buf.getvalue()
