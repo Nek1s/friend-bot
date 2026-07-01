@@ -4,6 +4,9 @@ from discord.voice import VoiceClient
 from config import DISCORD_BOT_TOKEN, FFMPEG_PATH, OUTPUT_DIR
 from llm import generate_response, reset_conversation
 from tts import tts
+from listener import VoiceListener
+
+voice_listener = VoiceListener()
 
 
 class FriendBot(discord.Bot):
@@ -16,10 +19,44 @@ class FriendBot(discord.Bot):
     async def on_ready(self) -> None:
         print(f"Bot logged in as {self.user} (ID: {self.user.id})")
         tts.load()
+        voice_listener.load_whisper()
         print("------")
 
 
 bot = FriendBot()
+
+
+def _play_audio(voice: VoiceClient, filepath: str) -> None:
+    if voice.is_playing():
+        voice.stop()
+    voice.play(discord.FFmpegPCMAudio(executable=FFMPEG_PATH, source=filepath))
+
+
+async def _handle_transcription(text: str) -> None:
+    """Callback: transcribed speech -> LLM -> TTS -> play in voice."""
+    voice = bot.voice_clients[0] if bot.voice_clients else None
+    if voice is None:
+        return
+
+    try:
+        reply = await generate_response(text)
+    except Exception:
+        return
+
+    output_path = await tts.generate(reply)
+    _play_audio(voice, output_path)
+
+
+class PCMStreamSink(discord.sinks.Sink):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def write(self, data, user) -> None:
+        pcm = getattr(data, "pcm", None)
+        if pcm:
+            result = voice_listener.feed_pcm(pcm)
+            if result:
+                bot.loop.create_task(_handle_transcription(result))
 
 
 @bot.slash_command(name="ping", description="Проверка работоспособности")
@@ -45,14 +82,35 @@ async def leave(ctx: discord.ApplicationContext) -> None:
         await ctx.respond("Я и так не в голосовом канале!", ephemeral=True)
         return
 
+    voice_listener.stop()
     await voice.disconnect()
     await ctx.respond("Отключился")
 
 
-def _play_audio(voice: VoiceClient, filepath: str) -> None:
-    if voice.is_playing():
-        voice.stop()
-    voice.play(discord.FFmpegPCMAudio(executable=FFMPEG_PATH, source=filepath))
+@bot.slash_command(
+    name="listen", description="Начать слушать голосовой канал и отвечать голосом"
+)
+async def listen(ctx: discord.ApplicationContext) -> None:
+    voice = ctx.voice_client
+    if voice is None:
+        await ctx.respond("Сначала вызови /join!", ephemeral=True)
+        return
+
+    voice.start_listening(PCMStreamSink())
+    voice_listener.on_transcription = _handle_transcription
+    await ctx.respond("Слушаю голосовой канал... Говори!")
+
+
+@bot.slash_command(name="stoplisten", description="Перестать слушать канал")
+async def stoplisten(ctx: discord.ApplicationContext) -> None:
+    voice = ctx.voice_client
+    if voice is None:
+        await ctx.respond("Я и так не в голосовом канале!", ephemeral=True)
+        return
+
+    voice.stop_listening()
+    voice_listener.stop()
+    await ctx.respond("Перестал слушать")
 
 
 @bot.slash_command(name="chat", description="Написать боту — он ответит голосом")
@@ -71,7 +129,6 @@ async def chat(ctx: discord.ApplicationContext, text: str) -> None:
         return
 
     output_path = await tts.generate(reply)
-
     _play_audio(voice, output_path)
     await ctx.respond(f"> {text}\n{reply}")
 
