@@ -1,0 +1,9 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+output/
+voice_samples/
+*.wav
+*.mp3
