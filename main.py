@@ -18,6 +18,8 @@ class FriendBot(discord.Bot):
 
     async def on_ready(self) -> None:
         print(f"Bot logged in as {self.user} (ID: {self.user.id})")
+        await self.sync_commands()
+        print("Commands synced")
         tts.load()
         voice_listener.load_whisper()
         print("------")
