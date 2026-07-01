@@ -17,15 +17,21 @@ async def generate_response(user_text: str) -> str:
         *conversation_history[-20:],
     ]
 
-    response = await client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=messages,
-        max_tokens=150,
-        temperature=0.8,
-    )
+    try:
+        response = await client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            max_tokens=400,
+            temperature=0.8,
+            timeout=30,
+        )
+    except Exception as e:
+        print(f"[LLM] ERROR: {e}")
+        conversation_history.pop()
+        return "..."
 
     reply = response.choices[0].message.content or "..."
-
+    print(f"[LLM] {user_text!r} -> {reply!r}")
     conversation_history.append({"role": "assistant", "content": reply})
     return reply
 

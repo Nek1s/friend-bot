@@ -46,15 +46,25 @@ async def _handle_transcription(text: str) -> None:
     """Callback: transcribed speech -> LLM -> TTS -> play in voice."""
     voice = bot.voice_clients[0] if bot.voice_clients else None
     if voice is None:
+        print("[Handle] No voice client")
         return
 
     try:
         reply = await generate_response(text)
-    except Exception:
+    except Exception as e:
+        print(f"[Handle] LLM error: {e}")
         return
 
-    output_path = await tts.generate(reply)
-    _play_audio(voice, output_path)
+    if not reply:
+        print("[Handle] Empty reply")
+        return
+
+    try:
+        output_path = await tts.generate(reply)
+        _play_audio(voice, output_path)
+        print(f"[Handle] Played: {reply!r}")
+    except Exception as e:
+        print(f"[Handle] TTS error: {e}")
 
 
 class PCMStreamSink(discord.sinks.Sink):
