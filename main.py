@@ -1,4 +1,5 @@
 import os
+import asyncio
 import discord
 from discord.voice import VoiceClient
 from config import DISCORD_BOT_TOKEN, FFMPEG_PATH, OUTPUT_DIR
@@ -24,8 +25,11 @@ class FriendBot(discord.Bot):
             await self.sync_commands(guild_ids=[guild.id])
             print(f"Synced commands to guild: {guild.name}")
         print("Commands synced")
-        tts.load()
-        voice_listener.load_whisper()
+
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, tts.load)
+        loop.run_in_executor(None, voice_listener.load_whisper)
+        print("Models loading in background...")
         print("------")
 
 

@@ -23,6 +23,6 @@ SYSTEM_PROMPT = (
     "Максимум 2–3 предложения."
 )
 
-SILENCE_THRESHOLD = 1.5
+SILENCE_THRESHOLD = 0.8
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
 TTS_MODEL_NAME = os.getenv("TTS_MODEL", "tts_models/multilingual/multi-dataset/xtts_v2")
