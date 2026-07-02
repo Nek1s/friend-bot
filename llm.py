@@ -1,21 +1,35 @@
 from collections.abc import AsyncIterator
 
 from openai import AsyncOpenAI
-from config import LLM_MODEL, LLM_BASE_URL, LLM_API_KEY, SYSTEM_PROMPT
+from config import (
+    LLM_MODEL,
+    LLM_BASE_URL,
+    LLM_API_KEY,
+    LLM_REASONING_EFFORT,
+    SYSTEM_PROMPT,
+)
 
 client = AsyncOpenAI(
     api_key=LLM_API_KEY,
     base_url=LLM_BASE_URL,
 )
 
+# Провайдер-специфичные доп. параметры запроса (напр. отключение reasoning у Gemini)
+_EXTRA: dict = (
+    {"extra_body": {"reasoning_effort": LLM_REASONING_EFFORT}}
+    if LLM_REASONING_EFFORT
+    else {}
+)
+
 conversation_history: list[dict] = []
 
 _SENT_TERMINATORS = ".!?…"
 
-# ВНИМАНИЕ: deepseek-v4-flash — reasoning-модель. Она тратит ~150–250 токенов на
-# «размышление» (reasoning_content) ДО ответа (content). max_tokens считает и то,
-# и другое, поэтому лимит должен быть с запасом — иначе reasoning съест весь бюджет
-# и content окажется пустым (finish_reason=length).
+# ВНИМАНИЕ: у reasoning-моделей (напр. deepseek-v4-flash без отключения, или Gemini
+# без reasoning_effort=none) часть токенов уходит на «мысли» ДО ответа, а max_tokens
+# считает и то, и другое. Держим с запасом — иначе reasoning съест весь бюджет и
+# content окажется пустым (finish_reason=length). У Gemini с reasoning_effort=none
+# «мыслей» нет, но запас не мешает.
 MAX_TOKENS = 512
 
 
@@ -65,6 +79,7 @@ async def generate_response(user_text: str) -> str:
             max_tokens=MAX_TOKENS,
             temperature=0.8,
             timeout=30,
+            **_EXTRA,
         )
     except Exception as e:
         print(f"[LLM] ERROR: {e}")
@@ -92,6 +107,7 @@ async def stream_sentences(user_text: str) -> AsyncIterator[str]:
             temperature=0.8,
             timeout=30,
             stream=True,
+            **_EXTRA,
         )
     except Exception as e:
         print(f"[LLM] stream ERROR: {e}")

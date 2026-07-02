@@ -237,16 +237,22 @@ py -3.12 -m venv .venv
 2. **Короткие ответы** — системный промпт просит 1–2 коротких предложения (меньше
    текста → меньше времени TTS, т.к. RTF ~константа).
 
-**Важные факты про LLM (`deepseek-v4-flash` через opencode zen):**
-- Это **reasoning-модель**: стримит `reasoning_content` («мысли») ДО `content` (ответа).
-  Мы берём только `content`. `max_tokens` считает и то, и другое — поэтому **`MAX_TOKENS`
-  должен быть с запасом (≥~400)**. При 120 reasoning съедал весь бюджет → пустой ответ
-  (`finish_reason=length`). Сейчас `MAX_TOKENS=512` в `llm.py`.
-- Отключить reasoning параметрами (`reasoning_effort`, `enable_thinking`…) **не удалось** —
-  прокси их игнорирует.
-- Сравнение моделей эндпоинта по времени до 1-го токена: `deepseek-v4-flash` (~2.3с) —
-  **уже самая быстрая**; `minimax-m2.5` без reasoning ~2.7с, `kimi-k2.6` ~3.2с,
-  `glm-5` ~7.6с. Вывод: **менять LLM не нужно**.
+**LLM: перешли на Google Gemini (быстрее до 1-го токена).**
+- Текущий провайдер (в `.env`): **Google AI Studio, `gemini-2.5-flash`** через
+  OpenAI-совместимый эндпоинт `https://generativelanguage.googleapis.com/v1beta/openai/`,
+  с **`LLM_REASONING_EFFORT=none`** (отключает «мысли» Gemini → скорость).
+  Замер до 1-го токена: **~0.8–1.1с** (стабильно) против ~2.3с у deepseek — в ~2.8× быстрее.
+- Код провайдер-агностичен: `config.LLM_REASONING_EFFORT` → в `llm.py` уходит как
+  `extra_body={"reasoning_effort": ...}` (только если непусто). Откат на opencode/deepseek —
+  раскомментировать старый блок в `.env`.
+- **Про reasoning-модели** (актуально при откате на deepseek): они стримят `reasoning_content`
+  ДО `content`; мы берём только `content`; `max_tokens` считает и то, и другое, поэтому
+  `MAX_TOKENS=512` с запасом (при 120 reasoning съедал весь бюджет → пустой ответ,
+  `finish_reason=length`). У deepseek через opencode отключить reasoning параметрами не вышло.
+- Сравнение по времени до 1-го токена (для истории): Gemini `gemini-2.5-flash` no-think
+  ~0.8с и `gemini-flash-lite-latest` ~1.2с — быстрее всех; opencode `deepseek-v4-flash`
+  ~2.3с; `glm-5` ~7.6с. Gemini free-tier иногда даёт выбросы (503/долгий ответ) — при
+  проблемах со стабильностью рассмотреть платный тариф или откат.
 
 **Не сделано / варианты на будущее:**
 - **flash-attn** (ускорил бы TTS ~1.5–2×) — на этой Windows-машине **не собрать**: нет

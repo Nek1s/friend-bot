@@ -8,6 +8,9 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://opencode.ai/zen/go/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY")
+# Для reasoning-моделей: "none" отключает «мысли» (быстрее до первого токена,
+# напр. gemini-2.5-flash). Пусто — параметр не передаётся.
+LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "")
 
 FFMPEG_PATH = os.getenv(
     "FFMPEG_PATH",
