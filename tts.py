@@ -1,22 +1,24 @@
 import os
 import asyncio
+import struct
+import wave
 from concurrent.futures import ThreadPoolExecutor
+
 import torch
-from config import OUTPUT_DIR, TTS_MODEL_NAME, VOICE_SAMPLES_DIR
+import soundfile as sf
 
-# PyTorch 2.6+ default: weights_only=True — TTS needs False
-torch.serialization.add_safe_globals([])
-_original_load = torch.load
-
-
-def _load(*args, **kwargs):
-    kwargs.setdefault("weights_only", False)
-    return _original_load(*args, **kwargs)
-
-
-torch.load = _load
+from config import (
+    OUTPUT_DIR,
+    QWEN_TTS_MODEL,
+    TTS_LANGUAGE,
+    REFERENCE_TEXT,
+    VOICE_SAMPLES_DIR,
+)
 
 _pool = ThreadPoolExecutor(max_workers=1)
+
+# Дефолтная частота дискретизации для тишины-заглушки, если модель не загружена.
+_FALLBACK_SR = 24000
 
 
 class TTSManager:
@@ -27,13 +29,16 @@ class TTSManager:
     def load(self) -> None:
         if self._loaded:
             return
-        print("TTSManager: загружаю XTTSv2 (первый запуск — ~3 ГБ весов)...")
-        from TTS.api import TTS
+        print(f"TTSManager: загружаю Qwen3-TTS ({QWEN_TTS_MODEL}, первый запуск — ~2.5 ГБ весов)...")
+        from qwen_tts import Qwen3TTSModel
 
-        self.model = TTS(model_name=TTS_MODEL_NAME, progress_bar=False)
-        self.model.to("cuda")
+        self.model = Qwen3TTSModel.from_pretrained(
+            QWEN_TTS_MODEL,
+            device_map="cuda:0",
+            dtype=torch.bfloat16,
+        )
         self._loaded = True
-        print("TTSManager: XTTSv2 модель загружена")
+        print("TTSManager: Qwen3-TTS модель загружена")
 
     def _find_speaker_wav(self) -> str | None:
         if not os.path.isdir(VOICE_SAMPLES_DIR):
@@ -43,22 +48,32 @@ class TTSManager:
             return os.path.join(VOICE_SAMPLES_DIR, wavs[0])
         return None
 
+    def _generate_blocking(self, text: str, output_path: str, ref_audio: str) -> None:
+        """Синхронный синтез — вызывается в отдельном потоке."""
+        kwargs = dict(
+            text=text,
+            language=TTS_LANGUAGE,
+            ref_audio=ref_audio,
+        )
+        if REFERENCE_TEXT:
+            kwargs["ref_text"] = REFERENCE_TEXT
+        wavs, sr = self.model.generate_voice_clone(**kwargs)
+        sf.write(output_path, wavs[0], sr)
+
     async def generate(self, text: str) -> str:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         output_path = os.path.join(OUTPUT_DIR, "tts_output.wav")
 
-        speaker_wav = self._find_speaker_wav()
+        ref_audio = self._find_speaker_wav()
 
-        if self.model is not None and speaker_wav is not None:
+        if self.model is not None and ref_audio is not None:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 _pool,
-                lambda: self.model.tts_to_file(
-                    text=text,
-                    speaker_wav=speaker_wav,
-                    language="ru",
-                    file_path=output_path,
-                ),
+                self._generate_blocking,
+                text,
+                output_path,
+                ref_audio,
             )
         else:
             self._generate_silence(output_path)
@@ -67,10 +82,7 @@ class TTSManager:
 
     @staticmethod
     def _generate_silence(path: str, duration: float = 1.0) -> None:
-        import struct
-        import wave
-
-        sample_rate = 24000
+        sample_rate = _FALLBACK_SR
         num_samples = int(sample_rate * duration)
         with wave.open(path, "w") as wf:
             wf.setnchannels(1)

@@ -25,4 +25,21 @@ SYSTEM_PROMPT = (
 
 SILENCE_THRESHOLD = 0.35
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
-TTS_MODEL_NAME = os.getenv("TTS_MODEL", "tts_models/multilingual/multi-dataset/xtts_v2")
+
+# --- Qwen3-TTS (zero-shot voice clone) ---
+QWEN_TTS_MODEL = os.getenv("QWEN_TTS_MODEL", "Qwen/Qwen3-TTS-12Hz-0.6B-Base")
+# Qwen3-TTS ждёт имена языков строчными: 'russian', 'english', ... (или 'auto').
+TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "russian")
+# Точный транскрипт того, что произнесено в voice_samples/reference_neutral.wav.
+# Нужен Qwen3-TTS для качественного клонирования голоса.
+REFERENCE_TEXT = os.getenv(
+    "REFERENCE_TEXT",
+    "Каждый человек обладает уникальным инструментом, который отражает его характер, "
+    "настроение и жизненный опыт. Этот инструмент — наш голос. Когда мы говорим, "
+    "звуковая волна мгновенно передает собеседнику тончайшие нюансы наших мыслей. "
+    "Сегодня технологии шагнули далеко вперед. Идея воссоздать точную цифровую копию "
+    "человеческого голоса больше не кажется сюжетом из фантастического романа. Это "
+    "реальность, с которой мы работаем здесь и сейчас. Для того чтобы модель получилась "
+    "качественной, важна каждая деталь: чистота записи, отсутствие эха и, конечно, "
+    "естественность произношения.",
+)
