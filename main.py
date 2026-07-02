@@ -3,7 +3,7 @@ import asyncio
 import discord
 from discord.voice import VoiceClient
 from config import DISCORD_BOT_TOKEN, FFMPEG_PATH, OUTPUT_DIR
-from llm import generate_response, reset_conversation
+from llm import generate_response, stream_sentences, reset_conversation
 from tts import tts
 from listener import VoiceListener
 
@@ -36,35 +36,97 @@ class FriendBot(discord.Bot):
 bot = FriendBot()
 
 
-def _play_audio(voice: VoiceClient, filepath: str) -> None:
-    if voice.is_playing():
+# --- Очередь воспроизведения: играем предложения по мере готовности ---
+_audio_queue: "asyncio.Queue | None" = None
+_player_task: "asyncio.Task | None" = None
+
+
+def _ensure_player() -> "asyncio.Queue":
+    global _audio_queue, _player_task
+    if _audio_queue is None:
+        _audio_queue = asyncio.Queue()
+    if _player_task is None or _player_task.done():
+        _player_task = bot.loop.create_task(_player_loop())
+    return _audio_queue
+
+
+async def _player_loop() -> None:
+    """Последовательно проигрывает файлы из очереди, ждёт конца каждого."""
+    assert _audio_queue is not None
+    while True:
+        filepath = await _audio_queue.get()
+        try:
+            voice = bot.voice_clients[0] if bot.voice_clients else None
+            if voice is not None and voice.is_connected():
+                done = asyncio.Event()
+
+                def _after(err, ev=done):
+                    if err:
+                        print(f"[Player] playback error: {err}")
+                    bot.loop.call_soon_threadsafe(ev.set)
+
+                voice.play(
+                    discord.FFmpegPCMAudio(executable=FFMPEG_PATH, source=filepath),
+                    after=_after,
+                )
+                await done.wait()
+        except Exception as e:
+            print(f"[Player] error: {e}")
+        finally:
+            _audio_queue.task_done()
+
+
+def _reset_playback() -> "asyncio.Queue":
+    """Barge-in: очистить очередь и оборвать текущее воспроизведение."""
+    queue = _ensure_player()
+    while not queue.empty():
+        try:
+            queue.get_nowait()
+            queue.task_done()
+        except asyncio.QueueEmpty:
+            break
+    voice = bot.voice_clients[0] if bot.voice_clients else None
+    if voice is not None and voice.is_playing():
         voice.stop()
-    voice.play(discord.FFmpegPCMAudio(executable=FFMPEG_PATH, source=filepath))
+    return queue
+
+
+def _play_audio(voice: VoiceClient, filepath: str) -> None:
+    """Проиграть один файл через очередь (с прерыванием текущего)."""
+    queue = _reset_playback()
+    queue.put_nowait(filepath)
 
 
 async def _handle_transcription(text: str) -> None:
-    """Callback: transcribed speech -> LLM -> TTS -> play in voice."""
+    """Речь -> LLM (стрим по предложениям) -> TTS -> очередь воспроизведения.
+
+    Первое предложение уходит в озвучку и начинает играть, пока модель ещё
+    дописывает остальные — задержка до первого звука не зависит от длины ответа.
+    """
     voice = bot.voice_clients[0] if bot.voice_clients else None
     if voice is None:
         print("[Handle] No voice client")
         return
 
+    queue = _reset_playback()  # новый ответ прерывает предыдущий
+    count = 0
     try:
-        reply = await generate_response(text)
+        async for sentence in stream_sentences(text):
+            if not sentence:
+                continue
+            try:
+                output_path = await tts.generate(sentence)
+            except Exception as e:
+                print(f"[Handle] TTS error: {e}")
+                continue
+            await queue.put(output_path)
+            count += 1
+            print(f"[Handle] Queued #{count}: {sentence!r}")
     except Exception as e:
         print(f"[Handle] LLM error: {e}")
-        return
 
-    if not reply:
+    if count == 0:
         print("[Handle] Empty reply")
-        return
-
-    try:
-        output_path = await tts.generate(reply)
-        _play_audio(voice, output_path)
-        print(f"[Handle] Played: {reply!r}")
-    except Exception as e:
-        print(f"[Handle] TTS error: {e}")
 
 
 async def _async_transcribe_and_handle() -> None:

@@ -2,6 +2,7 @@ import os
 import asyncio
 import struct
 import wave
+import itertools
 from concurrent.futures import ThreadPoolExecutor
 
 import torch
@@ -25,6 +26,8 @@ class TTSManager:
     def __init__(self) -> None:
         self.model = None
         self._loaded = False
+        # ротация имён файлов: очередь может держать несколько предложений сразу
+        self._seq = itertools.count()
 
     def load(self) -> None:
         if self._loaded:
@@ -62,7 +65,8 @@ class TTSManager:
 
     async def generate(self, text: str) -> str:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
-        output_path = os.path.join(OUTPUT_DIR, "tts_output.wav")
+        # ротирующееся имя (mod 16), чтобы файлы в очереди не перетирались
+        output_path = os.path.join(OUTPUT_DIR, f"tts_{next(self._seq) % 16}.wav")
 
         ref_audio = self._find_speaker_wav()
 
